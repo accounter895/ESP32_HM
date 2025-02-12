@@ -1,27 +1,50 @@
 #include <Arduino.h>
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+#include <MQ135.h>
+
 //arduino的GND接串口屏或串口工具的GND,共地
 //arduino的9接串口屏或串口工具的RX
 //arduino的8接串口屏或串口工具的TX
 //arduino的5V接串口屏的5V,如果是串口工具,不用接5V也可以
 //根据自己的实际修改对应的TX_Pin和RX_Pin
 #define TJC Serial1
+#define DHTTYPE    DHT11     // DHT 22 (AM2302)
 #define TX_Pin 17
 #define RX_Pin 18
 #define FRAME_LENGTH 7
 #define LED_Pin 21
+#define DHTPIN 2     // Digital pin connected to the DHT sensor 
+#define PIN_MQ135  A2
 
+
+// Sensor library:
+DHT_Unified dht(DHTPIN, DHTTYPE);
+MQ135 mq135_sensor(PIN_MQ135);
+uint32_t delayMS;
+float temperature = 21.0, humidity = 25.0;
 int a;
 unsigned long nowtime;
 void setup() {
   // put your setup code here, to run once:
-  //初始化串口
+  dht.begin();
   TJC.begin(115200, SERIAL_8N1, RX_Pin, TX_Pin);  //串口1初始化
   Serial.begin(115200); //串口0初始化
   pinMode(LED_Pin, OUTPUT);
+
+  // 设置ADC分辨率位12位
+  analogReadResolution(12);
+
+  sensor_t sensor;
+  dht.temperature().getSensor(&sensor);
+  dht.humidity().getSensor(&sensor);
+  
   //因为串口屏开机会发送88 ff ff ff,所以要清空串口缓冲区
   while (TJC.read() >= 0); //清空串口缓冲区
-  TJC.print("page main\xff\xff\xff"); //发送命令让屏幕跳转到main页面
+  TJC.print("page start\xff\xff\xff"); //发送命令让屏幕跳转到main页面
   nowtime = millis(); //获取当前已经运行的时间
+  delayMS = sensor.min_delay / 1000;
 }
 
 void loop() {
@@ -29,27 +52,23 @@ void loop() {
   char str[100];
   if (millis() >= nowtime + 1000) { //1s为周期
     nowtime = millis(); //获取当前已经运行的时间
-
+    sensors_event_t event;
+    dht.temperature().getEvent(&event);
     //用sprintf来格式化字符串，给n0的val属性赋值
-    sprintf(str, "n0.val=%d\xff\xff\xff", a);
-    //把字符串发送出去
+    sprintf(str, "n0.val=%d\xff\xff\xff", (uint8_t)event.temperature);
     TJC.print(str);
-
-    //用sprintf来格式化字符串，给t0的txt属性赋值
-    sprintf(str, "t0.txt=\"%d\"\xff\xff\xff", a);
-    //把字符串发送出去
+    dht.humidity().getEvent(&event);
+    sprintf(str, "n1.val=%d\xff\xff\xff", (uint8_t)event.relative_humidity);
     TJC.print(str);
-    //用sprintf来格式化字符串，触发b0的按下事件,直接把结束符整合在字符串中
-    sprintf(str, "click b0,1\xff\xff\xff");
-    //把字符串发送出去
+    float correctedPPM = mq135_sensor.getCorrectedPPM(temperature, humidity);
+    sprintf(str, "n4.val=%d\xff\xff\xff", (uint16_t)correctedPPM);
     TJC.print(str);
     delay(50);  //延时50ms,才能看清楚点击效果
 
     //用sprintf来格式化字符串，触发b0的弹起事件,直接把结束符整合在字符串中
-    sprintf(str, "click b0,0\xff\xff\xff");
+    //sprintf(str, "click b0,0\xff\xff\xff");
     //把字符串发送出去
-    TJC.print(str);
-    a++;
+    //TJC.print(str);
   }
 
   //串口数据格式：
@@ -104,15 +123,12 @@ void loop() {
           //下发的是滑动条h0.val的信息
           sprintf(str, "msg.txt=\"h0.val is %d\"\xff\xff\xff", ubuffer[2]);
           TJC.print(str);
-
         }else if(ubuffer[1] == 0x03)
         {
           //下发的是滑动条h1.val的信息
           sprintf(str, "msg.txt=\"h1.val is %d\"\xff\xff\xff", ubuffer[2]);
           TJC.print(str);
-
         }
-
       }
     } else {
       TJC.read();  //从串口缓冲读取1个字节并删除
