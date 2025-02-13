@@ -25,8 +25,14 @@ DHT_Unified dht(DHTPIN, DHTTYPE);
 MQ135 mq135_sensor(PIN_MQ135);
 uint32_t delayMS;
 float temperature = 21.0, humidity = 25.0, Soil_wet = 0;
-int a;
 unsigned long nowtime;
+const uint16_t AirValue = 3015;   // Air value of the soil_sensor
+const uint16_t WaterValue = 1180;  // Water value of the soil_sensor
+uint16_t Soil_int = (AirValue - WaterValue) / 3;
+
+// Function declaration:
+void Soil_judge(void);
+
 void setup() {
   // put your setup code here, to run once:
   dht.begin();
@@ -34,8 +40,7 @@ void setup() {
   Serial.begin(115200); //串口0初始化
   pinMode(LED_Pin, OUTPUT);
 
-  // 设置ADC分辨率位12位
-  analogReadResolution(12);
+  analogReadResolution(12);  // 设置ADC分辨率位12位
 
   sensor_t sensor;
   dht.temperature().getSensor(&sensor);
@@ -67,9 +72,7 @@ void loop() {
     sprintf(str, "n4.val=%d\xff\xff\xff", (uint16_t)correctedPPM);
     TJC.print(str);
 
-    Soil_wet = analogRead(Soil_val);
-    Serial.print("Soil_wet:");
-    Serial.println(Soil_wet);
+    Soil_judge();
     delay(50);  //延时50ms,才能看清楚点击效果
 
     //用sprintf来格式化字符串，触发b0的弹起事件,直接把结束符整合在字符串中
@@ -97,7 +100,6 @@ void loop() {
   //例子2：上位机代码  printh 55 02 00 00 ff ff ff  含义：h0.val=0
   //例子3：上位机代码  printh 55 03 64 00 ff ff ff  含义：h1.val=100
   //例子4：上位机代码  printh 55 03 00 00 ff ff ff  含义：h1.val=0
-
 
   //当串口缓冲区大于等于一帧的长度时
   while (TJC.available() >= FRAME_LENGTH) {
@@ -140,5 +142,21 @@ void loop() {
     } else {
       TJC.read();  //从串口缓冲读取1个字节并删除
     }
+  }
+}
+
+void Soil_judge(void){
+  Soil_wet = analogRead(A0);  //put Sensor insert into soil
+  if(Soil_wet > WaterValue && Soil_wet < (WaterValue + Soil_int))
+  {
+    Serial.println("Very Wet");
+  }
+  else if(Soil_wet > (WaterValue + Soil_int) && Soil_wet < (AirValue - Soil_int))
+  {
+    Serial.println("Wet");
+  }
+  else if(Soil_wet < AirValue && Soil_wet > (AirValue - Soil_int))
+  {
+    Serial.println("Dry");
   }
 }
