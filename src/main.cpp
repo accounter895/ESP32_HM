@@ -17,13 +17,14 @@
 #define LED_Pin 21
 #define DHTPIN 2     // Digital pin connected to the DHT sensor 
 #define PIN_MQ135  A2
+#define Soil_val   A0
 
 
 // Sensor library:
 DHT_Unified dht(DHTPIN, DHTTYPE);
 MQ135 mq135_sensor(PIN_MQ135);
 uint32_t delayMS;
-float temperature = 21.0, humidity = 25.0;
+float temperature = 21.0, humidity = 25.0, Soil_wet = 0;
 int a;
 unsigned long nowtime;
 void setup() {
@@ -54,15 +55,21 @@ void loop() {
     nowtime = millis(); //获取当前已经运行的时间
     sensors_event_t event;
     dht.temperature().getEvent(&event);
+
     //用sprintf来格式化字符串，给n0的val属性赋值
     sprintf(str, "n0.val=%d\xff\xff\xff", (uint8_t)event.temperature);
     TJC.print(str);
     dht.humidity().getEvent(&event);
     sprintf(str, "n1.val=%d\xff\xff\xff", (uint8_t)event.relative_humidity);
     TJC.print(str);
+
     float correctedPPM = mq135_sensor.getCorrectedPPM(temperature, humidity);
     sprintf(str, "n4.val=%d\xff\xff\xff", (uint16_t)correctedPPM);
     TJC.print(str);
+
+    Soil_wet = analogRead(Soil_val);
+    Serial.print("Soil_wet:");
+    Serial.println(Soil_wet);
     delay(50);  //延时50ms,才能看清楚点击效果
 
     //用sprintf来格式化字符串，触发b0的弹起事件,直接把结束符整合在字符串中
